@@ -6,7 +6,7 @@
 
 **Fork by [Sakib Ahamed](https://github.com/zsxkib)** | Based on [openai/codex](https://github.com/openai/codex)
 
-> When the Codex MCP server restarts, all in-memory sessions are lost. This fork fixes that. Sessions are automatically rehydrated from disk, so you never lose a conversation.
+> When the Codex MCP server restarts, all in-memory sessions are lost. This fork fixes that. Sessions are automatically rehydrated from their on-disk rollout transcripts, so conversations survive server restarts.
 
 ---
 
@@ -86,16 +86,24 @@ NO
 │
 ▼
 ┌─ Find JSONL rollout on disk
-│   ~/.codex/sessions/**/abc-123.jsonl
+│   ~/.codex/sessions/**/<rollout>.jsonl
 │
-├─ Read session metadata (cwd, model, config)
+├─ Read session metadata (cwd, config)
 │
-├─ Replay conversation history
+├─ Replay full conversation history
 │
-└─ Resume as new thread ──► Continue session normally
+└─ Resume thread ──► Continue session normally
 ```
 
 The calling agent doesn't need to handle any of this. It just keeps using `codex-reply` with the same thread ID, and sessions survive restarts automatically.
+
+---
+
+## Limitations
+
+- Rehydration depends on the JSONL rollout file existing on disk. If it was deleted or corrupted, the session cannot be recovered.
+- Per-session config overrides (model, sandbox mode, etc.) are not stored in the rollout — the rehydrated session uses the current default config with only the original working directory restored.
+- No integration test for the rehydration path yet (contributions welcome).
 
 ---
 
@@ -103,7 +111,7 @@ The calling agent doesn't need to handle any of this. It just keeps using `codex
 
 This is a fork of [openai/codex](https://github.com/openai/codex) — the official Codex CLI from OpenAI. All upstream features, docs, and installation methods apply. See the [upstream README](https://github.com/openai/codex#readme) for full documentation.
 
-**Branch:** `sakib/mcp-session-rehydration` (default) — always 1 commit ahead of `openai/codex:main`
+**Branch:** `sakib/mcp-session-rehydration` (default) — stays close to `openai/codex:main` via regular rebases
 
 ---
 

@@ -501,7 +501,7 @@ impl MessageProcessor {
                         let result =
                             crate::codex_tool_runner::create_call_tool_result_with_thread_id(
                                 thread_id,
-                                format!("Session not found for thread_id: {thread_id}"),
+                                format!("Session not found and rehydration failed for thread_id {thread_id}: {e}"),
                                 Some(true),
                             );
                         outgoing.send_response(request_id, result).await;
