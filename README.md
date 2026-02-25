@@ -1,60 +1,110 @@
-<p align="center"><code>npm i -g @openai/codex</code><br />or <code>brew install --cask codex</code></p>
-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 <p align="center">
   <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
 </p>
-</br>
-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
+
+# Codex CLI — with MCP Session Rehydration
+
+**Fork by [Sakib Ahamed](https://github.com/zsxkib)** | Based on [openai/codex](https://github.com/openai/codex)
+
+> When the Codex MCP server restarts, all in-memory sessions are lost. This fork fixes that. Sessions are automatically rehydrated from disk, so you never lose a conversation.
 
 ---
 
-## Quickstart
+## What this fork adds
 
-### Installing and running Codex CLI
+Codex exposes itself as an [MCP server](https://modelcontextprotocol.io/) so other AI agents (like Claude) can spawn and manage Codex sessions programmatically via `codex` and `codex-reply` tools.
 
-Install globally with your preferred package manager:
+**The problem:** The upstream MCP server keeps sessions in memory only. If the server restarts — which happens frequently during development, editor reloads, or system events — every active session is gone. The calling agent gets back `"Session not found"` and has to start over from scratch, losing all prior context and work.
+
+**The fix:** This fork adds **automatic session rehydration from disk**. When `codex-reply` is called with a thread ID that isn't in memory, the server:
+
+1. Locates the JSONL rollout file on disk (Codex already persists these)
+2. Reads the session metadata to recover the original working directory
+3. Rebuilds the full conversation history from the rollout transcript
+4. Resumes the session transparently — the calling agent never knows there was a restart
+
+This makes Codex MCP sessions **durable across server restarts**, which is critical for any production multi-agent setup.
+
+### Changes
+
+Two files, one commit — surgical and minimal:
+
+| File | What changed |
+|------|-------------|
+| `codex-rs/mcp-server/src/message_processor.rs` | Added `try_rehydrate_from_disk()` method and fallback logic in `handle_tool_call_codex_session_reply` |
+| `codex-rs/core/src/thread_manager.rs` | Exposed `auth_manager()` accessor needed for rehydration |
+
+**+76 lines, -10 lines.** No new dependencies. No breaking changes. Stays current with upstream via regular rebases.
+
+---
+
+## Quick start
+
+### Use as an MCP server (for Claude Code, etc.)
+
+Build the patched MCP server binary:
 
 ```shell
-# Install using npm
-npm install -g @openai/codex
+cd codex-rs
+cargo build --release -p codex-mcp-server
 ```
+
+Then point your MCP client config at the binary:
+
+```json
+{
+  "mcpServers": {
+    "codex": {
+      "command": "/path/to/codex-mcp-server",
+      "args": ["--model", "gpt-5.3-codex"]
+    }
+  }
+}
+```
+
+### Stay synced with upstream
+
+A helper script keeps this fork up to date:
 
 ```shell
-# Install using Homebrew
-brew install --cask codex
+./update-patched.sh
 ```
 
-Then simply run `codex` to get started.
+This fetches the latest from `openai/codex`, rebases the patch on top, rebuilds, and pushes.
 
-<details>
-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+---
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+## How it works
 
-- macOS
-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+```
+codex-reply(thread_id="abc-123", prompt="...")
+        │
+        ▼
+┌─ In memory? ──── YES ──► Continue session normally
+│
+NO
+│
+▼
+┌─ Find JSONL rollout on disk
+│   ~/.codex/sessions/**/abc-123.jsonl
+│
+├─ Read session metadata (cwd, model, config)
+│
+├─ Replay conversation history
+│
+└─ Resume as new thread ──► Continue session normally
+```
 
-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+The calling agent doesn't need to handle any of this. It just keeps using `codex-reply` with the same thread ID, and sessions survive restarts automatically.
 
-</details>
+---
 
-### Using Codex with your ChatGPT plan
+## Upstream
 
-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Team, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
+This is a fork of [openai/codex](https://github.com/openai/codex) — the official Codex CLI from OpenAI. All upstream features, docs, and installation methods apply. See the [upstream README](https://github.com/openai/codex#readme) for full documentation.
 
-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+**Branch:** `sakib/mcp-session-rehydration` (default) — always 1 commit ahead of `openai/codex:main`
 
-## Docs
+---
 
-- [**Codex Documentation**](https://developers.openai.com/codex)
-- [**Contributing**](./docs/contributing.md)
-- [**Installing & building**](./docs/install.md)
-- [**Open source fund**](./docs/open-source-fund.md)
-
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+<sub>Licensed under [Apache-2.0](LICENSE), same as upstream.</sub>
