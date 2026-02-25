@@ -1,0 +1,36 @@
+name: Build codex-mcp-server
+
+on:
+  push:
+    branches: [sakib/mcp-session-rehydration]
+
+jobs:
+  build:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codex-rs/target
+          key: ${{ runner.os }}-cargo-mcp-${{ hashFiles('codex-rs/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-mcp-
+
+      - name: Build codex-mcp-server (release)
+        working-directory: codex-rs
+        run: cargo build --release -p codex-mcp-server
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-mcp-server-aarch64-apple-darwin
+          path: codex-rs/target/release/codex-mcp-server
+          retention-days: 90
